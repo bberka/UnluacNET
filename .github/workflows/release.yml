@@ -97,7 +97,9 @@ jobs:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           name: Release v${{ steps.get_version.outputs.VERSION }}
           files: |
-            ./dist/*.exe
-            ./dist/UnluacNET-CLI-*
-            ./dist/*.zip
+            dist/UnluacNET-CLI-v${{ steps.get_version.outputs.VERSION }}-win-x64.exe
+            dist/UnluacNET-CLI-v${{ steps.get_version.outputs.VERSION }}-linux-x64
+            dist/UnluacNET-CLI-v${{ steps.get_version.outputs.VERSION }}-osx-arm64
+            dist/UnluacNET-Core-v${{ steps.get_version.outputs.VERSION }}.zip
           generate_release_notes: true
+          fail_on_unmatched_files: true
