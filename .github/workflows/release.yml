@@ -1,0 +1,103 @@
+name: Production Release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - "VERSION"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Version
+        id: get_version
+        run: |
+          VERSION_VALUE=$(cat VERSION | xargs)
+          echo "VERSION=$VERSION_VALUE" >> $GITHUB_OUTPUT
+
+      - name: Check if Tag Exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.get_version.outputs.VERSION }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup .NET
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build Core (DLL)
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          dotnet build src/UnluacNET.Core/UnluacNET.Core.csproj --configuration Release -p:Version=${{ steps.get_version.outputs.VERSION }} -o ./dist/core
+
+      - name: Publish CLI (Windows x64 - Single File)
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          dotnet publish src/UnluacNET.CLI/UnluacNET.CLI.csproj \
+            -c Release \
+            -r win-x64 \
+            -p:PublishSingleFile=true \
+            -p:SelfContained=true \
+            -p:Version=${{ steps.get_version.outputs.VERSION }} \
+            -o ./dist/cli-windows-x64
+
+      - name: Publish CLI (Linux x64 - Portable)
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          dotnet publish src/UnluacNET.CLI/UnluacNET.CLI.csproj \
+            -c Release \
+            -r linux-x64 \
+            -p:PublishSingleFile=true \
+            -p:SelfContained=true \
+            -p:Version=${{ steps.get_version.outputs.VERSION }} \
+            -o ./dist/cli-linux-x64
+
+      - name: Publish CLI (macOS Arm64 - Apple Silicon)
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          dotnet publish src/UnluacNET.CLI/UnluacNET.CLI.csproj \
+            -c Release \
+            -r osx-arm64 \
+            -p:PublishSingleFile=true \
+            -p:SelfContained=true \
+            -p:Version=${{ steps.get_version.outputs.VERSION }} \
+            -o ./dist/cli-osx-arm64
+
+      - name: Prepare Artifacts for Release
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          # Rename files to include version and platform for clarity
+          mv ./dist/cli-windows-x64/UnluacNET.CLI.exe ./dist/UnluacNET-CLI-v${{ steps.get_version.outputs.VERSION }}-win-x64.exe
+          mv ./dist/cli-linux-x64/UnluacNET.CLI ./dist/UnluacNET-CLI-v${{ steps.get_version.outputs.VERSION }}-linux-x64
+          mv ./dist/cli-osx-arm64/UnluacNET.CLI ./dist/UnluacNET-CLI-v${{ steps.get_version.outputs.VERSION }}-osx-arm64
+          # Zip the Core DLL
+          zip -j ./dist/UnluacNET-Core-v${{ steps.get_version.outputs.VERSION }}.zip ./dist/core/UnluacNET.Core.dll
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          files: |
+            ./dist/*.exe
+            ./dist/UnluacNET-CLI-*
+            ./dist/*.zip
+          generate_release_notes: true
